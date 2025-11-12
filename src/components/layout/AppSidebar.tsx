@@ -8,6 +8,7 @@ import {
   Calculator,
   Users,
   Building2,
+  Activity,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -63,6 +64,11 @@ const menuItems = [
     title: "HR & Payroll",
     url: "/hr-payroll",
     icon: Users,
+  },
+  {
+    title: "Activity Log",
+    url: "/activity-log",
+    icon: Activity,
   },
 ];
 
