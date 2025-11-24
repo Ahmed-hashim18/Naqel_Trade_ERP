@@ -10,9 +10,11 @@ import {
   Building2,
   Activity,
   Shield,
+  LogOut,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
 } from "@/components/ui/sidebar";
 
 const menuItems = [
@@ -80,7 +83,14 @@ const menuItems = [
 
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const currentPath = location.pathname;
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   const isActive = (path: string) => {
     if (path === "/") {
@@ -121,6 +131,22 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter className="border-t border-sidebar-border p-4">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          {user && (
+            <div className="px-2 py-2 text-xs text-muted-foreground">
+              <div className="font-medium truncate">{user.name}</div>
+              <div className="truncate">{user.email}</div>
+            </div>
+          )}
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
