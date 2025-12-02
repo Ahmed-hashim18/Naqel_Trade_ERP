@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null;
   role: Role | null;
   login: (email: string, password: string) => Promise<{ error?: string }>;
-  signup: (email: string, password: string, name: string, roleId: string) => Promise<{ error?: string }>;
+  signup: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   logout: () => void;
   resetPassword: (email: string) => Promise<{ error?: string }>;
   isLoading: boolean;
@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, name: string, roleId: string) => {
+  const signup = async (email: string, password: string, name: string) => {
     try {
       const redirectUrl = `${window.location.origin}/`;
       
@@ -141,19 +141,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        // Get the role type from the roles table
-        const { data: selectedRole } = await supabase
-          .from('roles')
-          .select('role_type')
-          .eq('id', roleId)
-          .single();
-        
-        if (selectedRole) {
-          await supabase.from('user_roles').insert({
-            user_id: data.user.id,
-            role: selectedRole.role_type,
-          });
-        }
+        // Assign default 'viewer' role to new users
+        await supabase.from('user_roles').insert({
+          user_id: data.user.id,
+          role: 'viewer',
+        });
 
         await fetchUserProfile(data.user.id);
       }

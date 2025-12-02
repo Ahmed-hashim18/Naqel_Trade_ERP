@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRoles } from "@/hooks/useRoles";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ValidationMessage } from '@/components/common/ValidationMessage';
 import { UserPlus } from 'lucide-react';
@@ -13,12 +11,10 @@ import { UserPlus } from 'lucide-react';
 export default function Signup() {
   const navigate = useNavigate();
   const { signup, user } = useAuth();
-  const { roles, isLoading: isLoadingRoles } = useRoles();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [roleId, setRoleId] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -41,14 +37,9 @@ export default function Signup() {
       return;
     }
 
-    if (!roleId) {
-      setError('Please select a role');
-      return;
-    }
-
     setIsLoading(true);
 
-    const { error: signupError } = await signup(email, password, name, roleId);
+    const { error: signupError } = await signup(email, password, name);
     
     if (signupError) {
       setError(signupError);
@@ -97,21 +88,6 @@ export default function Signup() {
                 required
                 disabled={isLoading}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select value={roleId} onValueChange={setRoleId} disabled={isLoading || isLoadingRoles}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a role" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role.id} value={role.id}>
-                      {role.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
