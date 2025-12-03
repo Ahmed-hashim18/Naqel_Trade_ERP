@@ -3,7 +3,7 @@ import { Plus, Download, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Account, AccountType, AccountStatus, AccountWithChildren } from "@/types/account";
-import { mockAccounts, mockAccountTransactions } from "@/data/mockAccounts";
+import { useAccounts } from "@/hooks/useAccounts";
 import { AccountHierarchy } from "@/components/accounts/AccountHierarchy";
 import { AccountFormDialog } from "@/components/accounts/AccountFormDialog";
 import { AccountDetailDialog } from "@/components/accounts/AccountDetailDialog";
@@ -11,7 +11,7 @@ import { AccountFilters } from "@/components/accounts/AccountFilters";
 import { BulkActionsBar } from "@/components/accounts/BulkActionsBar";
 import { AccountAnalytics } from "@/components/accounts/AccountAnalytics";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { LoadingSpinner } from "@/components/loading/LoadingSpinner";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +24,16 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export default function ChartOfAccounts() {
-  const [accounts, setAccounts] = useState<Account[]>(mockAccounts);
+  const { 
+    accounts, 
+    isLoading, 
+    createAccount, 
+    updateAccount, 
+    deleteAccount: deleteAccountMutation,
+    bulkDeleteAccounts,
+    bulkUpdateStatus 
+  } = useAccounts();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<AccountType | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<AccountStatus | 'all'>('all');
@@ -33,8 +42,7 @@ export default function ChartOfAccounts() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [viewingAccount, setViewingAccount] = useState<Account | null>(null);
-  const [deleteAccount, setDeleteAccount] = useState<Account | null>(null);
-  const { toast } = useToast();
+  const [deleteAccountState, setDeleteAccountState] = useState<Account | null>(null);
 
   // Build hierarchy
   const hierarchicalAccounts = useMemo(() => {
@@ -93,80 +101,35 @@ export default function ChartOfAccounts() {
     }
   };
 
-  const handleSaveAccount = (accountData: Partial<Account>) => {
+  const handleSaveAccount = async (accountData: Partial<Account>) => {
     if (editingAccount) {
-      setAccounts(prev => prev.map(acc => 
-        acc.id === editingAccount.id 
-          ? { ...acc, ...accountData, updatedAt: new Date() }
-          : acc
-      ));
-      toast({
-        title: "Account Updated",
-        description: `${accountData.name} has been updated successfully.`,
-      });
+      await updateAccount({ id: editingAccount.id, data: accountData });
     } else {
-      const newAccount: Account = {
-        id: Date.now().toString(),
-        code: accountData.code!,
-        name: accountData.name!,
-        type: accountData.type!,
-        parentId: accountData.parentId || null,
-        status: accountData.status || 'active',
-        balance: accountData.balance || 0,
-        description: accountData.description,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      setAccounts(prev => [...prev, newAccount]);
-      toast({
-        title: "Account Created",
-        description: `${newAccount.name} has been created successfully.`,
-      });
+      await createAccount(accountData);
     }
     setEditingAccount(null);
+    setFormOpen(false);
   };
 
-  const handleDeleteConfirm = () => {
-    if (deleteAccount) {
-      setAccounts(prev => prev.filter(acc => acc.id !== deleteAccount.id));
-      toast({
-        title: "Account Deleted",
-        description: `${deleteAccount.name} has been deleted.`,
-        variant: "destructive",
-      });
-      setDeleteAccount(null);
+  const handleDeleteConfirm = async () => {
+    if (deleteAccountState) {
+      await deleteAccountMutation(deleteAccountState.id);
+      setDeleteAccountState(null);
     }
   };
 
-  const handleBulkActivate = () => {
-    setAccounts(prev => prev.map(acc =>
-      selectedIds.has(acc.id) ? { ...acc, status: 'active' as AccountStatus, updatedAt: new Date() } : acc
-    ));
-    toast({
-      title: "Accounts Activated",
-      description: `${selectedIds.size} account(s) have been activated.`,
-    });
+  const handleBulkActivate = async () => {
+    await bulkUpdateStatus({ ids: Array.from(selectedIds), status: 'active' });
     setSelectedIds(new Set());
   };
 
-  const handleBulkDeactivate = () => {
-    setAccounts(prev => prev.map(acc =>
-      selectedIds.has(acc.id) ? { ...acc, status: 'inactive' as AccountStatus, updatedAt: new Date() } : acc
-    ));
-    toast({
-      title: "Accounts Deactivated",
-      description: `${selectedIds.size} account(s) have been deactivated.`,
-    });
+  const handleBulkDeactivate = async () => {
+    await bulkUpdateStatus({ ids: Array.from(selectedIds), status: 'inactive' });
     setSelectedIds(new Set());
   };
 
-  const handleBulkDelete = () => {
-    setAccounts(prev => prev.filter(acc => !selectedIds.has(acc.id)));
-    toast({
-      title: "Accounts Deleted",
-      description: `${selectedIds.size} account(s) have been deleted.`,
-      variant: "destructive",
-    });
+  const handleBulkDelete = async () => {
+    await bulkDeleteAccounts(Array.from(selectedIds));
     setSelectedIds(new Set());
   };
 
@@ -177,11 +140,16 @@ export default function ChartOfAccounts() {
   };
 
   const handleExport = () => {
-    toast({
-      title: "Export Started",
-      description: "Your chart of accounts is being exported...",
-    });
+    // Export functionality
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   const totalAccounts = accounts.length;
   const activeAccounts = accounts.filter(acc => acc.status === 'active').length;
@@ -219,41 +187,41 @@ export default function ChartOfAccounts() {
 
         <TabsContent value="accounts" className="space-y-6">
           <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Accounts</CardDescription>
-            <CardTitle className="text-3xl">{totalAccounts}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">{activeAccounts} active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Total Balance</CardDescription>
-            <CardTitle className="text-3xl">
-              {new Intl.NumberFormat('en-US', {
-                style: 'currency',
-                currency: 'MRU',
-                notation: 'compact',
-              }).format(totalBalance)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">Across all accounts</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Selected</CardDescription>
-            <CardTitle className="text-3xl">{selectedIds.size}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {selectedIds.size > 0 ? 'Bulk actions available' : 'No selection'}
-            </p>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Total Accounts</CardDescription>
+                <CardTitle className="text-3xl">{totalAccounts}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">{activeAccounts} active</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Total Balance</CardDescription>
+                <CardTitle className="text-3xl">
+                  {new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: 'MRU',
+                    notation: 'compact',
+                  }).format(totalBalance)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">Across all accounts</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardDescription>Selected</CardDescription>
+                <CardTitle className="text-3xl">{selectedIds.size}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  {selectedIds.size > 0 ? 'Bulk actions available' : 'No selection'}
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           <Card>
@@ -286,7 +254,7 @@ export default function ChartOfAccounts() {
               setEditingAccount(account);
               setFormOpen(true);
             }}
-            onDelete={(account) => setDeleteAccount(account)}
+            onDelete={(account) => setDeleteAccountState(account)}
           />
         </TabsContent>
 
@@ -307,15 +275,15 @@ export default function ChartOfAccounts() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         account={viewingAccount}
-        transactions={viewingAccount ? (mockAccountTransactions[viewingAccount.id] || []) : []}
+        transactions={[]}
       />
 
-      <AlertDialog open={!!deleteAccount} onOpenChange={(open) => !open && setDeleteAccount(null)}>
+      <AlertDialog open={!!deleteAccountState} onOpenChange={(open) => !open && setDeleteAccountState(null)}>
         <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Account?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteAccount?.name}"? This action cannot be undone
+              Are you sure you want to delete "{deleteAccountState?.name}"? This action cannot be undone
               and will remove all transaction history for this account.
             </AlertDialogDescription>
           </AlertDialogHeader>
