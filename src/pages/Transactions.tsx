@@ -17,7 +17,7 @@ import { LoadingSpinner } from "@/components/loading/LoadingSpinner";
 
 export default function Transactions() {
   const { transactions, isLoading, createTransaction, updateTransaction, deleteTransactions, bulkUpdateStatus } = useTransactions();
-  const { data: accounts = [], isLoading: isLoadingAccounts } = useAccounts();
+  const { accounts, isLoading: isLoadingAccounts } = useAccounts();
   
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailTransaction, setDetailTransaction] = useState<Transaction | null>(null);
