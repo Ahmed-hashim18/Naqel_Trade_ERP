@@ -26,7 +26,7 @@ const statusColors = {
 
 export default function Sales() {
   const { sales, loading: salesLoading, createSalesOrder, updateSalesOrder, deleteSalesOrders, bulkUpdateStatus } = useSales();
-  const { customers, loading: customersLoading } = useCustomers();
+  const { customers, loading: customersLoading, createCustomer } = useCustomers();
   const { products, loading: productsLoading } = useProducts();
   const [selectedSale, setSelectedSale] = useState<SalesOrder | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
@@ -268,6 +268,7 @@ export default function Sales() {
         onSave={handleSave}
         customers={customers}
         products={products}
+        onCreateCustomer={createCustomer}
       />
       <SalesBulkActionsBar
         selectedCount={selectedIds.size}

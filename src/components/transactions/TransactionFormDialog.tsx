@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Transaction, TransactionStatus, TransactionType } from "@/types/transaction";
+import { Account } from "@/types/account";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,10 +14,10 @@ interface TransactionFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (transaction: Partial<Transaction>) => Promise<void>;
-  accounts: any[];
+  accounts: Account[];
 }
 
-export function TransactionFormDialog({ transaction, open, onOpenChange, onSave }: TransactionFormDialogProps) {
+export function TransactionFormDialog({ transaction, open, onOpenChange, onSave, accounts }: TransactionFormDialogProps) {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Partial<Transaction>>({
     date: new Date().toISOString().split('T')[0],
@@ -48,6 +49,9 @@ export function TransactionFormDialog({ transaction, open, onOpenChange, onSave 
     }
   }, [transaction, open]);
 
+  // Filter active accounts only
+  const activeAccounts = accounts.filter(acc => acc.status === "active");
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -55,6 +59,15 @@ export function TransactionFormDialog({ transaction, open, onOpenChange, onSave 
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields with valid values.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.accountFrom || !formData.accountTo) {
+      toast({
+        title: "Validation Error",
+        description: "Please select both From and To accounts.",
         variant: "destructive",
       });
       return;
@@ -121,23 +134,41 @@ export function TransactionFormDialog({ transaction, open, onOpenChange, onSave 
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="accountFrom">From Account</Label>
-              <Input
-                id="accountFrom"
-                value={formData.accountFrom}
-                onChange={(e) => setFormData({ ...formData, accountFrom: e.target.value })}
-                placeholder="Source account"
-              />
+              <Label htmlFor="accountFrom">From Account *</Label>
+              <Select 
+                value={formData.accountFrom} 
+                onValueChange={(value) => setFormData({ ...formData, accountFrom: value })}
+              >
+                <SelectTrigger id="accountFrom">
+                  <SelectValue placeholder="Select source account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.code} - {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
-              <Label htmlFor="accountTo">To Account</Label>
-              <Input
-                id="accountTo"
-                value={formData.accountTo}
-                onChange={(e) => setFormData({ ...formData, accountTo: e.target.value })}
-                placeholder="Destination account"
-              />
+              <Label htmlFor="accountTo">To Account *</Label>
+              <Select 
+                value={formData.accountTo} 
+                onValueChange={(value) => setFormData({ ...formData, accountTo: value })}
+              >
+                <SelectTrigger id="accountTo">
+                  <SelectValue placeholder="Select destination account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeAccounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      {account.code} - {account.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

@@ -38,7 +38,7 @@ const payrollStatusColors = {
 
 export default function HRPayroll() {
   const { employees, isLoading: isLoadingEmployees, createEmployee, updateEmployee, deleteEmployee } = useEmployees();
-  const { departments, isLoading: isLoadingDepartments } = useDepartments();
+  const { departments, isLoading: isLoadingDepartments, createDepartment } = useDepartments();
   const { payroll: payrollRecords, isLoading: isLoadingPayroll, createPayroll, updatePayroll, deletePayroll } = usePayroll();
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -386,6 +386,7 @@ export default function HRPayroll() {
         employee={selectedEmployee}
         onSave={handleSave}
         departments={departments}
+        onCreateDepartment={createDepartment}
       />
 
       <EmployeeDetailDialog

@@ -1,8 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Department } from "@/types/department";
+import { toast } from "sonner";
 
 export function useDepartments() {
+  const queryClient = useQueryClient();
+
   const departmentsQuery = useQuery({
     queryKey: ["departments"],
     queryFn: async () => {
@@ -26,9 +29,36 @@ export function useDepartments() {
     },
   });
 
+  const createDepartmentMutation = useMutation({
+    mutationFn: async (deptData: Partial<Department>) => {
+      const { data, error } = await supabase
+        .from("departments")
+        .insert({
+          code: deptData.code,
+          name: deptData.name,
+          description: deptData.description || null,
+          budget: deptData.budget || 0,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["departments"] });
+      toast.success("Department created successfully");
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to create department: " + error.message);
+    },
+  });
+
   return {
     departments: departmentsQuery.data ?? [],
     isLoading: departmentsQuery.isLoading,
     error: departmentsQuery.error,
+    createDepartment: createDepartmentMutation.mutateAsync,
+    refetch: () => queryClient.invalidateQueries({ queryKey: ["departments"] }),
   };
 }

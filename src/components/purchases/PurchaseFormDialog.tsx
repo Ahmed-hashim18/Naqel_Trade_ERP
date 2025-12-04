@@ -17,9 +17,10 @@ interface PurchaseFormDialogProps {
   onSave: (purchase: Partial<PurchaseOrder>) => Promise<void>;
   vendors: Vendor[];
   products: Product[];
+  onCreateVendor?: (vendor: Partial<Vendor>) => Promise<any>;
 }
 
-export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendors, products }: PurchaseFormDialogProps) {
+export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendors, products, onCreateVendor }: PurchaseFormDialogProps) {
   const [formData, setFormData] = useState<Partial<PurchaseOrder>>({
     orderNumber: "",
     date: new Date().toISOString().split("T")[0],
@@ -30,6 +31,10 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
     taxRate: 10,
     notes: "",
   });
+  const [showNewVendor, setShowNewVendor] = useState(false);
+  const [newVendorName, setNewVendorName] = useState("");
+  const [newVendorEmail, setNewVendorEmail] = useState("");
+  const [newVendorPhone, setNewVendorPhone] = useState("");
 
   useEffect(() => {
     if (purchase) {
@@ -50,6 +55,10 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
         notes: "",
       });
     }
+    setShowNewVendor(false);
+    setNewVendorName("");
+    setNewVendorEmail("");
+    setNewVendorPhone("");
   }, [purchase, open]);
 
   const calculateTotals = (lineItems: PurchaseLineItem[], taxRate: number) => {
@@ -104,12 +113,42 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
   };
 
   const handleVendorChange = (vendorId: string) => {
+    if (vendorId === "__create_new__") {
+      setShowNewVendor(true);
+      return;
+    }
     const vendor = vendors.find((v) => v.id === vendorId);
     setFormData({
       ...formData,
       vendorId,
       vendorName: vendor?.name || "",
     });
+  };
+
+  const handleCreateVendor = async () => {
+    if (!newVendorName.trim()) return;
+
+    if (onCreateVendor) {
+      try {
+        const newVendor = await onCreateVendor({
+          name: newVendorName.trim(),
+          email: newVendorEmail.trim() || undefined,
+          phone: newVendorPhone.trim() || undefined,
+          status: "active",
+        });
+        setFormData({
+          ...formData,
+          vendorId: newVendor.id,
+          vendorName: newVendor.name,
+        });
+        setShowNewVendor(false);
+        setNewVendorName("");
+        setNewVendorEmail("");
+        setNewVendorPhone("");
+      } catch (error) {
+        // Error handled in hook
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -159,18 +198,56 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
             </div>
             <div className="space-y-2">
               <Label htmlFor="vendor">Vendor</Label>
-              <Select value={formData.vendorId} onValueChange={handleVendorChange}>
-                <SelectTrigger id="vendor">
-                  <SelectValue placeholder="Select vendor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendors.map((vendor) => (
-                    <SelectItem key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {!showNewVendor ? (
+                <Select value={formData.vendorId} onValueChange={handleVendorChange}>
+                  <SelectTrigger id="vendor">
+                    <SelectValue placeholder="Select vendor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {onCreateVendor && (
+                      <SelectItem value="__create_new__" className="text-primary font-medium">
+                        <span className="flex items-center gap-1">
+                          <Plus className="h-4 w-4" />
+                          Create new vendor
+                        </span>
+                      </SelectItem>
+                    )}
+                    {vendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
+                  <div className="text-sm font-medium">New Vendor</div>
+                  <Input
+                    placeholder="Vendor name *"
+                    value={newVendorName}
+                    onChange={(e) => setNewVendorName(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Email (optional)"
+                    type="email"
+                    value={newVendorEmail}
+                    onChange={(e) => setNewVendorEmail(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Phone (optional)"
+                    value={newVendorPhone}
+                    onChange={(e) => setNewVendorPhone(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={handleCreateVendor}>
+                      Create
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setShowNewVendor(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
@@ -224,7 +301,7 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
                           <SelectContent>
                             {products.map((product) => (
                               <SelectItem key={product.id} value={product.id}>
-                                {product.name} - ${product.costPrice}
+                                {product.name} - {product.costPrice.toFixed(2)} MRU
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -248,7 +325,7 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
                           step="0.01"
                         />
                       </td>
-                      <td className="p-2 text-right font-semibold">${item.total.toFixed(2)}</td>
+                      <td className="p-2 text-right font-semibold">{item.total.toFixed(2)} MRU</td>
                       <td className="p-2">
                         <Button
                           type="button"
@@ -271,7 +348,7 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
             <div className="w-80 space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-semibold">${subtotal.toFixed(2)}</span>
+                <span className="font-semibold">{subtotal.toFixed(2)} MRU</span>
               </div>
               <div className="flex justify-between items-center gap-4">
                 <span className="text-muted-foreground">Tax Rate (%)</span>
@@ -285,11 +362,11 @@ export function PurchaseFormDialog({ purchase, open, onOpenChange, onSave, vendo
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tax</span>
-                <span className="font-semibold">${tax.toFixed(2)}</span>
+                <span className="font-semibold">{tax.toFixed(2)} MRU</span>
               </div>
               <div className="flex justify-between text-lg border-t pt-2">
                 <span className="font-semibold">Total</span>
-                <span className="font-bold">${total.toFixed(2)}</span>
+                <span className="font-bold">{total.toFixed(2)} MRU</span>
               </div>
             </div>
           </div>
