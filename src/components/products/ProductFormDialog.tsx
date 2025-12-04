@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Product } from "@/types/product";
+import { Vendor } from "@/types/vendor";
 import { useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFormValidation } from "@/hooks/useFormValidation";
@@ -16,9 +17,10 @@ interface ProductFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (product: Partial<Product>) => Promise<void>;
+  vendors?: Vendor[];
 }
 
-export function ProductFormDialog({ product, open, onOpenChange, onSave }: ProductFormDialogProps) {
+export function ProductFormDialog({ product, open, onOpenChange, onSave, vendors = [] }: ProductFormDialogProps) {
   const {
     data,
     handleChange,
@@ -30,7 +32,6 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
 
   useEffect(() => {
     if (open) {
-      // Map Product to form data
       const formData = product ? {
         sku: product.sku,
         name: product.name,
@@ -42,7 +43,7 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
         unit: product.unit,
         costPrice: product.costPrice,
         sellingPrice: product.sellingPrice,
-        supplier: product.supplierName || "",
+        supplier: product.supplierId || product.vendorId || "",
       } : {
         sku: "",
         name: "",
@@ -83,7 +84,8 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
       return;
     }
 
-    // Map form data to Product type
+    const selectedVendor = vendors.find(v => v.id === data.supplier);
+    
     const productData: Partial<Product> = {
       sku: data.sku,
       name: data.name,
@@ -96,7 +98,8 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
       unit: data.unit,
       costPrice: data.costPrice,
       sellingPrice: data.sellingPrice,
-      supplierName: data.supplier,
+      supplierId: data.supplier || undefined,
+      supplierName: selectedVendor?.name || "",
     };
 
     try {
@@ -118,11 +121,10 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
 
         <form onSubmit={handleSubmit}>
           <Tabs defaultValue="basic" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
               <TabsTrigger value="pricing">Pricing</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
-              <TabsTrigger value="supplier">Supplier</TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="space-y-4 mt-4">
@@ -154,42 +156,39 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
                 />
               </FormField>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField label="Category" name="category" required error={getFieldError("category")}>
-                  <Select
-                    value={data.category || "other"}
-                    onValueChange={(value) => handleChange("category", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="electronics">Electronics</SelectItem>
-                      <SelectItem value="furniture">Furniture</SelectItem>
-                      <SelectItem value="clothing">Clothing</SelectItem>
-                      <SelectItem value="food">Food & Beverage</SelectItem>
-                      <SelectItem value="tools">Tools</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormField>
+              <FormField label="Status" name="status" required error={getFieldError("status")}>
+                <Select
+                  value={data.status || "active"}
+                  onValueChange={(value) => handleChange("status", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="discontinued">Discontinued</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
 
-                <FormField label="Status" name="status" required error={getFieldError("status")}>
-                  <Select
-                    value={data.status || "active"}
-                    onValueChange={(value) => handleChange("status", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                      <SelectItem value="discontinued">Discontinued</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </FormField>
-              </div>
+              <FormField label="Supplier" name="supplier" error={getFieldError("supplier")}>
+                <Select
+                  value={data.supplier || ""}
+                  onValueChange={(value) => handleChange("supplier", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
             </TabsContent>
 
             <TabsContent value="pricing" className="space-y-4 mt-4">
@@ -258,17 +257,6 @@ export function ProductFormDialog({ product, open, onOpenChange, onSave }: Produ
                     <SelectItem value="meter">Meter</SelectItem>
                   </SelectContent>
                 </Select>
-              </FormField>
-            </TabsContent>
-
-            <TabsContent value="supplier" className="space-y-4 mt-4">
-              <FormField label="Supplier Name" name="supplier" error={getFieldError("supplier")}>
-                <Input
-                  id="supplier"
-                  value={data.supplier || ""}
-                  onChange={(e) => handleChange("supplier", e.target.value)}
-                  onBlur={() => handleBlur("supplier")}
-                />
               </FormField>
             </TabsContent>
           </Tabs>

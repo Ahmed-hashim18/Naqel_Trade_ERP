@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Employee } from "@/types/employee";
 import { Department } from "@/types/department";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
 
 interface EmployeeFormDialogProps {
   open: boolean;
@@ -14,6 +17,7 @@ interface EmployeeFormDialogProps {
   employee: Employee | null;
   onSave: (employee: Partial<Employee>) => void;
   departments: Department[];
+  onCreateDepartment?: (dept: Partial<Department>) => Promise<any>;
 }
 
 export function EmployeeFormDialog({
@@ -22,7 +26,43 @@ export function EmployeeFormDialog({
   employee,
   onSave,
   departments,
+  onCreateDepartment,
 }: EmployeeFormDialogProps) {
+  const [showNewDept, setShowNewDept] = useState(false);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptCode, setNewDeptCode] = useState("");
+  const [selectedDeptId, setSelectedDeptId] = useState(employee?.departmentId || "");
+
+  const handleDepartmentChange = (value: string) => {
+    if (value === "__create_new__") {
+      setShowNewDept(true);
+    } else {
+      setSelectedDeptId(value);
+    }
+  };
+
+  const handleCreateDepartment = async () => {
+    if (!newDeptName.trim() || !newDeptCode.trim()) {
+      toast.error("Department name and code are required");
+      return;
+    }
+
+    if (onCreateDepartment) {
+      try {
+        const newDept = await onCreateDepartment({
+          name: newDeptName.trim(),
+          code: newDeptCode.trim().toUpperCase(),
+        });
+        setSelectedDeptId(newDept.id);
+        setShowNewDept(false);
+        setNewDeptName("");
+        setNewDeptCode("");
+      } catch (error) {
+        // Error handled in hook
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -38,7 +78,7 @@ export function EmployeeFormDialog({
       state: formData.get("state") as string,
       zipCode: formData.get("zipCode") as string,
       country: formData.get("country") as string,
-      departmentId: formData.get("departmentId") as string,
+      departmentId: selectedDeptId,
       position: formData.get("position") as string,
       employmentType: formData.get("employmentType") as any,
       employmentStatus: formData.get("employmentStatus") as any,
@@ -132,7 +172,7 @@ export function EmployeeFormDialog({
               
               <div>
                 <Label htmlFor="country">Country *</Label>
-                <Input id="country" name="country" defaultValue={employee?.country || "USA"} required />
+                <Input id="country" name="country" defaultValue={employee?.country || "Mauritania"} required />
               </div>
             </TabsContent>
             
@@ -140,18 +180,54 @@ export function EmployeeFormDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="departmentId">Department *</Label>
-                  <Select name="departmentId" defaultValue={employee?.departmentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {!showNewDept ? (
+                    <Select 
+                      name="departmentId" 
+                      value={selectedDeptId}
+                      onValueChange={handleDepartmentChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {onCreateDepartment && (
+                          <SelectItem value="__create_new__" className="text-primary font-medium">
+                            <span className="flex items-center gap-1">
+                              <Plus className="h-4 w-4" />
+                              Create new department
+                            </span>
+                          </SelectItem>
+                        )}
+                        {departments.map((dept) => (
+                          <SelectItem key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
+                      <div className="text-sm font-medium">New Department</div>
+                      <Input
+                        placeholder="Department name *"
+                        value={newDeptName}
+                        onChange={(e) => setNewDeptName(e.target.value)}
+                      />
+                      <Input
+                        placeholder="Department code *"
+                        value={newDeptCode}
+                        onChange={(e) => setNewDeptCode(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" onClick={handleCreateDepartment}>
+                          Create
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setShowNewDept(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="position">Position *</Label>
@@ -215,8 +291,7 @@ export function EmployeeFormDialog({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MRU">MRU</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                      <SelectItem value="GBP">GBP</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

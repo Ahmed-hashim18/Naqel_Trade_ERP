@@ -1,8 +1,11 @@
 import { useState, useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Customer } from "@/types/customer";
+import { toast } from "sonner";
 
 export function useCustomers() {
+  const queryClient = useQueryClient();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,9 +47,42 @@ export function useCustomers() {
     }
   };
 
+  const createCustomerMutation = useMutation({
+    mutationFn: async (customerData: Partial<Customer>) => {
+      const { data, error } = await supabase
+        .from("customers")
+        .insert({
+          name: customerData.name,
+          email: customerData.email || null,
+          phone: customerData.phone || null,
+          company: customerData.company || null,
+          address: customerData.address || null,
+          city: customerData.city || null,
+          country: customerData.country || null,
+          tax_id: customerData.taxId || null,
+          credit_limit: customerData.creditLimit || 0,
+          current_balance: customerData.balance || 0,
+          status: customerData.status || "active",
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      fetchCustomers();
+      toast.success("Customer created successfully");
+    },
+    onError: (error: Error) => {
+      toast.error("Failed to create customer: " + error.message);
+    },
+  });
+
   return {
     customers,
     loading,
     refetch: fetchCustomers,
+    createCustomer: createCustomerMutation.mutateAsync,
   };
 }

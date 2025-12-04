@@ -25,7 +25,7 @@ const statusStyles = {
 
 export default function Purchases() {
   const { purchases, isLoading, createPurchase, updatePurchase, deletePurchases, bulkUpdateStatus } = usePurchases();
-  const { data: vendors = [], isLoading: isLoadingVendors } = useVendors();
+  const { vendors, isLoading: isLoadingVendors, createVendor } = useVendors();
   const { products, loading: isLoadingProducts } = useProducts();
   
   const [selectedPurchase, setSelectedPurchase] = useState<PurchaseOrder | null>(null);
@@ -259,6 +259,7 @@ export default function Purchases() {
         onSave={handleSave}
         vendors={vendors}
         products={products}
+        onCreateVendor={createVendor}
       />
 
       <PurchaseBulkActionsBar

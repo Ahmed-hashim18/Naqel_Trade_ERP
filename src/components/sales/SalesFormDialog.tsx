@@ -18,9 +18,10 @@ interface SalesFormDialogProps {
   onSave: (sale: Partial<SalesOrder>) => Promise<void>;
   customers: Customer[];
   products: Product[];
+  onCreateCustomer?: (customer: Partial<Customer>) => Promise<any>;
 }
 
-export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, products }: SalesFormDialogProps) {
+export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, products, onCreateCustomer }: SalesFormDialogProps) {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Partial<SalesOrder>>({
     customerId: "",
@@ -30,6 +31,10 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
     lineItems: [],
     notes: "",
   });
+  const [showNewCustomer, setShowNewCustomer] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerEmail, setNewCustomerEmail] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
 
   useEffect(() => {
     if (sale) {
@@ -44,26 +49,27 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
         notes: "",
       });
     }
+    setShowNewCustomer(false);
+    setNewCustomerName("");
+    setNewCustomerEmail("");
+    setNewCustomerPhone("");
   }, [sale, open]);
 
   const calculateLineItem = (item: Partial<LineItem>): LineItem => {
     const quantity = item.quantity || 0;
     const unitPrice = item.unitPrice || 0;
     const discount = item.discount || 0;
-    const tax = item.tax || 0;
 
     const subtotal = quantity * unitPrice;
     const discountAmount = subtotal * (discount / 100);
-    const subtotalAfterDiscount = subtotal - discountAmount;
-    const taxAmount = subtotalAfterDiscount * (tax / 100);
-    const total = subtotalAfterDiscount + taxAmount;
+    const total = subtotal - discountAmount;
 
     return {
       ...item,
       quantity,
       unitPrice,
       discount,
-      tax,
+      tax: 0,
       total,
     } as LineItem;
   };
@@ -74,14 +80,9 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
       const itemSubtotal = item.quantity * item.unitPrice;
       return sum + (itemSubtotal * (item.discount / 100));
     }, 0);
-    const taxAmount = items.reduce((sum, item) => {
-      const itemSubtotal = item.quantity * item.unitPrice;
-      const itemAfterDiscount = itemSubtotal - (itemSubtotal * (item.discount / 100));
-      return sum + (itemAfterDiscount * (item.tax / 100));
-    }, 0);
     const total = items.reduce((sum, item) => sum + item.total, 0);
 
-    return { subtotal, discountAmount, taxAmount, total };
+    return { subtotal, discountAmount, taxAmount: 0, total };
   };
 
   const addLineItem = () => {
@@ -93,7 +94,7 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
       quantity: 1,
       unitPrice: 0,
       discount: 0,
-      tax: 10,
+      tax: 0,
       total: 0,
     };
     setFormData({
@@ -122,6 +123,31 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
   const removeLineItem = (index: number) => {
     const items = formData.lineItems?.filter((_, i) => i !== index) || [];
     setFormData({ ...formData, lineItems: items });
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!newCustomerName.trim()) {
+      toast({ title: "Error", description: "Customer name is required", variant: "destructive" });
+      return;
+    }
+
+    if (onCreateCustomer) {
+      try {
+        const newCustomer = await onCreateCustomer({
+          name: newCustomerName.trim(),
+          email: newCustomerEmail.trim() || undefined,
+          phone: newCustomerPhone.trim() || undefined,
+          status: "active",
+        });
+        setFormData({ ...formData, customerId: newCustomer.id });
+        setShowNewCustomer(false);
+        setNewCustomerName("");
+        setNewCustomerEmail("");
+        setNewCustomerPhone("");
+      } catch (error) {
+        // Error handled in hook
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -164,21 +190,67 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="customer">Customer *</Label>
-              <Select
-                value={formData.customerId}
-                onValueChange={(value) => setFormData({ ...formData, customerId: value })}
-              >
-                <SelectTrigger id="customer">
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {!showNewCustomer ? (
+                <div className="space-y-2">
+                  <Select
+                    value={formData.customerId}
+                    onValueChange={(value) => {
+                      if (value === "__create_new__") {
+                        setShowNewCustomer(true);
+                      } else {
+                        setFormData({ ...formData, customerId: value });
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="customer">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {onCreateCustomer && (
+                        <SelectItem value="__create_new__" className="text-primary font-medium">
+                          <span className="flex items-center gap-1">
+                            <Plus className="h-4 w-4" />
+                            Create new customer
+                          </span>
+                        </SelectItem>
+                      )}
+                      {customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
+                  <div className="text-sm font-medium">New Customer</div>
+                  <Input
+                    placeholder="Customer name *"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Email (optional)"
+                    type="email"
+                    value={newCustomerEmail}
+                    onChange={(e) => setNewCustomerEmail(e.target.value)}
+                  />
+                  <Input
+                    placeholder="Phone (optional)"
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={handleCreateCustomer}>
+                      Create
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setShowNewCustomer(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -239,7 +311,6 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
                       <th className="text-right p-2 text-sm">Qty</th>
                       <th className="text-right p-2 text-sm">Price</th>
                       <th className="text-right p-2 text-sm">Disc%</th>
-                      <th className="text-right p-2 text-sm">Tax%</th>
                       <th className="text-right p-2 text-sm">Total</th>
                       <th className="p-2 text-sm"></th>
                     </tr>
@@ -293,17 +364,7 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
                             className="w-20 text-right"
                           />
                         </td>
-                        <td className="p-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={item.tax}
-                            onChange={(e) => updateLineItem(index, "tax", parseFloat(e.target.value) || 0)}
-                            className="w-20 text-right"
-                          />
-                        </td>
-                        <td className="p-2 text-right font-medium">${item.total.toFixed(2)}</td>
+                        <td className="p-2 text-right font-medium">{item.total.toFixed(2)} MRU</td>
                         <td className="p-2">
                           <Button
                             type="button"
@@ -330,19 +391,15 @@ export function SalesFormDialog({ sale, open, onOpenChange, onSave, customers, p
                       <>
                         <div className="flex justify-between text-sm">
                           <span>Subtotal:</span>
-                          <span>${totals.subtotal.toFixed(2)}</span>
+                          <span>{totals.subtotal.toFixed(2)} MRU</span>
                         </div>
                         <div className="flex justify-between text-sm">
                           <span>Discount:</span>
-                          <span className="text-red-500">-${totals.discountAmount.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span>Tax:</span>
-                          <span>${totals.taxAmount.toFixed(2)}</span>
+                          <span className="text-red-500">-{totals.discountAmount.toFixed(2)} MRU</span>
                         </div>
                         <div className="flex justify-between font-semibold text-lg border-t pt-2">
                           <span>Total:</span>
-                          <span>${totals.total.toFixed(2)}</span>
+                          <span>{totals.total.toFixed(2)} MRU</span>
                         </div>
                       </>
                     );

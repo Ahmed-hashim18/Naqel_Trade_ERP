@@ -11,10 +11,12 @@ import { ProductFormDialog } from "@/components/products/ProductFormDialog";
 import { ProductBulkActionsBar } from "@/components/products/ProductBulkActionsBar";
 import { Product, ProductFilters as Filters, ProductViewMode } from "@/types/product";
 import { useProducts } from "@/hooks/useProducts";
+import { useVendors } from "@/hooks/useVendors";
 import { LoadingSpinner } from "@/components/loading/LoadingSpinner";
 
 export default function Products() {
   const { products, loading, createProduct, updateProduct, deleteProducts, bulkUpdateStatus } = useProducts();
+  const { vendors } = useVendors();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -432,6 +434,7 @@ export default function Products() {
         open={showFormDialog}
         onOpenChange={setShowFormDialog}
         onSave={handleSave}
+        vendors={vendors}
       />
     </div>
   );

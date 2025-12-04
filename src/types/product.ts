@@ -32,6 +32,7 @@ export interface Product {
   
   // Supplier
   supplierId?: string;
+  vendorId?: string;
   supplierName?: string;
   supplierSku?: string;
   
