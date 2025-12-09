@@ -1,10 +1,34 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Account, AccountType, AccountStatus } from "@/types/account";
 import { toast } from "@/lib/toast";
 
 export function useAccounts() {
   const queryClient = useQueryClient();
+
+  // Subscribe to realtime changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('accounts_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'accounts'
+        },
+        (payload) => {
+          console.log('Account change detected:', payload.eventType);
+          queryClient.invalidateQueries({ queryKey: ["accounts"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const accountsQuery = useQuery({
     queryKey: ["accounts"],
@@ -39,6 +63,8 @@ export function useAccounts() {
         updatedAt: new Date(acc.updated_at),
       })) as Account[];
     },
+    staleTime: 0, // Always consider data stale to ensure fresh updates
+    refetchOnWindowFocus: true,
   });
 
   const createAccount = useMutation({
@@ -71,6 +97,7 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success("Account created successfully");
     },
     onError: (error: Error) => {
@@ -111,6 +138,7 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success("Account updated successfully");
     },
     onError: (error: Error) => {
@@ -138,6 +166,7 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success("Account deleted successfully");
     },
     onError: (error: Error) => {
@@ -166,6 +195,7 @@ export function useAccounts() {
     },
     onSuccess: (_, ids) => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success(`${ids.length} account(s) deleted successfully`);
     },
     onError: (error: Error) => {
@@ -224,6 +254,7 @@ export function useAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success("Accounts imported successfully");
     },
     onError: (error: Error) => {
@@ -242,6 +273,7 @@ export function useAccounts() {
     },
     onSuccess: (_, { ids }) => {
       queryClient.invalidateQueries({ queryKey: ["accounts"] });
+      queryClient.refetchQueries({ queryKey: ["accounts"] }); // Force immediate refetch
       toast.success(`${ids.length} account(s) updated successfully`);
     },
     onError: (error: Error) => {
