@@ -16,11 +16,20 @@ export function useAccounts() {
 
       if (error) throw error;
       
+      // Map database enum values to AccountType (capitalize first letter)
+      const typeMap: Record<string, AccountType> = {
+        'asset': 'Assets',
+        'liability': 'Liabilities',
+        'equity': 'Equity',
+        'revenue': 'Revenue',
+        'expense': 'Expenses',
+      };
+      
       return data.map((acc) => ({
         id: acc.id,
         code: acc.code,
         name: acc.name,
-        type: acc.type as AccountType,
+        type: typeMap[acc.account_type] || 'Assets' as AccountType,
         parentId: acc.parent_id,
         balance: acc.balance,
         description: acc.description,
@@ -34,12 +43,21 @@ export function useAccounts() {
 
   const createAccount = useMutation({
     mutationFn: async (accountData: Partial<Account>) => {
+      // Map AccountType to database enum values (lowercase)
+      const typeMap: Record<string, string> = {
+        'Assets': 'asset',
+        'Liabilities': 'liability',
+        'Equity': 'equity',
+        'Revenue': 'revenue',
+        'Expenses': 'expense',
+      };
+      
       const { data, error } = await supabase
         .from("accounts")
         .insert({
           code: accountData.code,
           name: accountData.name,
-          type: accountData.type,
+          account_type: typeMap[accountData.type || 'Assets'] || 'asset',
           parent_id: accountData.parentId,
           balance: accountData.balance || 0,
           description: accountData.description,
@@ -62,17 +80,31 @@ export function useAccounts() {
 
   const updateAccount = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Account> }) => {
+      // Map AccountType to database enum values (lowercase)
+      const typeMap: Record<string, string> = {
+        'Assets': 'asset',
+        'Liabilities': 'liability',
+        'Equity': 'equity',
+        'Revenue': 'revenue',
+        'Expenses': 'expense',
+      };
+      
+      const updateData: any = {
+        code: data.code,
+        name: data.name,
+        parent_id: data.parentId,
+        balance: data.balance,
+        description: data.description,
+        status: data.status,
+      };
+      
+      if (data.type) {
+        updateData.account_type = typeMap[data.type] || 'asset';
+      }
+      
       const { error } = await supabase
         .from("accounts")
-        .update({
-          code: data.code,
-          name: data.name,
-          type: data.type,
-          parent_id: data.parentId,
-          balance: data.balance,
-          description: data.description,
-          status: data.status,
-        })
+        .update(updateData)
         .eq("id", id);
 
       if (error) throw error;
@@ -146,6 +178,15 @@ export function useAccounts() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
+      // Map AccountType to database enum values (lowercase)
+      const typeMap: Record<string, string> = {
+        'Assets': 'asset',
+        'Liabilities': 'liability',
+        'Equity': 'equity',
+        'Revenue': 'revenue',
+        'Expenses': 'expense',
+      };
+
       // First, resolve parent IDs for accounts with parent codes
       const accountsToInsert = await Promise.all(
         accountsData.map(async (acc) => {
@@ -164,7 +205,7 @@ export function useAccounts() {
           return {
             code: acc.code,
             name: acc.name,
-            type: acc.type,
+            account_type: typeMap[acc.type || 'Assets'] || 'asset',
             parent_id: parentId,
             balance: acc.balance || 0,
             description: acc.description || null,

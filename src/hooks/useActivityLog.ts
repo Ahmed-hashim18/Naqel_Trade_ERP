@@ -12,29 +12,35 @@ export function useActivityLogs() {
         .from("activity_logs")
         .select(`
           *,
-          user:profiles(id, name, email)
+          user:profiles!activity_logs_user_id_fkey(id, name, email)
         `)
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(500); // Reduced limit for better performance
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching activity logs:", error);
+        throw error;
+      }
+
+      if (!data) return [];
 
       return data.map((log: any) => ({
         id: log.id,
         module: log.module as ActivityModule,
-        actionType: log.action as ActivityActionType,
-        description: log.details?.description || log.action || "Activity performed",
+        actionType: (log.action_type || log.action) as ActivityActionType,
+        description: log.description || log.details?.description || log.action || "Activity performed",
         userId: log.user_id,
         userName: log.user?.name || "Unknown",
         userEmail: log.user?.email || "",
-        timestamp: new Date(log.created_at),
+        timestamp: new Date(log.timestamp || log.created_at),
         metadata: {
           entityId: log.entity_id,
           entityType: log.entity_type,
-          ...log.details,
+          ...(log.metadata || log.details || {}),
         },
       })) as ActivityLog[];
     },
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   const createActivityLog = useMutation({
