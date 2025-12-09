@@ -203,9 +203,9 @@ export function useSales() {
         }
       }
 
-      // Create transaction
+      // Create transaction for income
       if (orderData.total && orderData.total > 0) {
-        // Find or create cash account (vault)
+        // Find cash account (vault) - where money goes TO
         let cashAccountId: string | null = null;
         const { data: cashAccounts } = await supabase
           .from("accounts")
@@ -217,11 +217,13 @@ export function useSales() {
         if (cashAccounts && cashAccounts.length > 0) {
           cashAccountId = cashAccounts[0].id;
         } else {
-          // Try to find by code
+          // Try to find by code (common cash account codes)
           const { data: accountByCode } = await supabase
             .from("accounts")
             .select("id")
-            .eq("code", "1110")
+            .in("code", ["1110", "1010", "1000"])
+            .eq("account_type", "asset")
+            .limit(1)
             .single();
 
           if (accountByCode) {
@@ -229,17 +231,56 @@ export function useSales() {
           }
         }
 
-        if (cashAccountId) {
-          // Create transaction
+        // Find revenue/income account - where income comes FROM
+        let revenueAccountId: string | null = null;
+        const { data: revenueAccounts } = await supabase
+          .from("accounts")
+          .select("id")
+          .eq("account_type", "revenue")
+          .ilike("name", "%sales%")
+          .limit(1);
+
+        if (revenueAccounts && revenueAccounts.length > 0) {
+          revenueAccountId = revenueAccounts[0].id;
+        } else {
+          // Try to find any revenue account
+          const { data: anyRevenue } = await supabase
+            .from("accounts")
+            .select("id")
+            .eq("account_type", "revenue")
+            .limit(1)
+            .single();
+
+          if (anyRevenue) {
+            revenueAccountId = anyRevenue.id;
+          } else {
+            // Try common revenue account codes
+            const { data: revenueByCode } = await supabase
+              .from("accounts")
+              .select("id")
+              .in("code", ["4000", "4100", "4200"])
+              .eq("account_type", "revenue")
+              .limit(1)
+              .single();
+
+            if (revenueByCode) {
+              revenueAccountId = revenueByCode.id;
+            }
+          }
+        }
+
+        // Create transaction with both accounts
+        if (cashAccountId && revenueAccountId) {
           const { error: transactionError } = await supabase
             .from("transactions")
             .insert({
               date: orderData.date || new Date().toISOString().split("T")[0],
               type: "sale",
-              description: `Sale order ${orderData.orderNumber}`,
-              account_to: cashAccountId,
+              description: `Sale order ${orderData.orderNumber} - ${orderData.customerName || "customer"}`,
+              account_from: revenueAccountId, // Income account (source)
+              account_to: cashAccountId, // Cash account (destination)
               amount: orderData.total,
-              status: "completed",
+              status: "posted", // Use "posted" for completed sales
               reference: orderData.orderNumber,
               notes: `Sale to ${orderData.customerName || "customer"}`,
               created_by: user.id,
@@ -248,20 +289,39 @@ export function useSales() {
           if (transactionError) {
             console.error("Error creating transaction:", transactionError);
           } else {
-            // Update cash account balance
-            const { data: account } = await supabase
+            // Update cash account balance (increase)
+            const { data: cashAccount } = await supabase
               .from("accounts")
               .select("balance")
               .eq("id", cashAccountId)
               .single();
 
-            if (account) {
+            if (cashAccount) {
               await supabase
                 .from("accounts")
-                .update({ balance: (account.balance || 0) + orderData.total })
+                .update({ balance: (cashAccount.balance || 0) + orderData.total })
                 .eq("id", cashAccountId);
             }
+
+            // Update revenue account balance (increase for revenue)
+            const { data: revenueAccount } = await supabase
+              .from("accounts")
+              .select("balance")
+              .eq("id", revenueAccountId)
+              .single();
+
+            if (revenueAccount) {
+              await supabase
+                .from("accounts")
+                .update({ balance: (revenueAccount.balance || 0) + orderData.total })
+                .eq("id", revenueAccountId);
+            }
           }
+        } else {
+          console.warn("Could not find required accounts for transaction:", {
+            cashAccountId,
+            revenueAccountId,
+          });
         }
       }
 

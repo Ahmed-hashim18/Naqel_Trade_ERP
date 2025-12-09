@@ -168,9 +168,9 @@ export function usePurchases() {
         }
       }
 
-      // Create transaction
+      // Create transaction for expense
       if (purchaseData.total && purchaseData.total > 0) {
-        // Find cash account (vault)
+        // Find cash account (vault) - where money comes FROM
         let cashAccountId: string | null = null;
         const { data: cashAccounts } = await supabase
           .from("accounts")
@@ -182,11 +182,13 @@ export function usePurchases() {
         if (cashAccounts && cashAccounts.length > 0) {
           cashAccountId = cashAccounts[0].id;
         } else {
-          // Try to find by code
+          // Try to find by code (common cash account codes)
           const { data: accountByCode } = await supabase
             .from("accounts")
             .select("id")
-            .eq("code", "1110")
+            .in("code", ["1110", "1010", "1000"])
+            .eq("account_type", "asset")
+            .limit(1)
             .single();
 
           if (accountByCode) {
@@ -194,17 +196,56 @@ export function usePurchases() {
           }
         }
 
-        if (cashAccountId) {
-          // Create transaction
+        // Find expense account - where expense goes TO
+        let expenseAccountId: string | null = null;
+        const { data: expenseAccounts } = await supabase
+          .from("accounts")
+          .select("id")
+          .eq("account_type", "expense")
+          .ilike("name", "%purchase%")
+          .limit(1);
+
+        if (expenseAccounts && expenseAccounts.length > 0) {
+          expenseAccountId = expenseAccounts[0].id;
+        } else {
+          // Try to find any expense account
+          const { data: anyExpense } = await supabase
+            .from("accounts")
+            .select("id")
+            .eq("account_type", "expense")
+            .limit(1)
+            .single();
+
+          if (anyExpense) {
+            expenseAccountId = anyExpense.id;
+          } else {
+            // Try common expense account codes
+            const { data: expenseByCode } = await supabase
+              .from("accounts")
+              .select("id")
+              .in("code", ["5000", "5100", "5200", "6000"])
+              .eq("account_type", "expense")
+              .limit(1)
+              .single();
+
+            if (expenseByCode) {
+              expenseAccountId = expenseByCode.id;
+            }
+          }
+        }
+
+        // Create transaction with both accounts
+        if (cashAccountId && expenseAccountId) {
           const { error: transactionError } = await supabase
             .from("transactions")
             .insert({
               date: purchaseData.date || new Date().toISOString().split("T")[0],
               type: "purchase",
-              description: `Purchase order ${purchaseData.orderNumber}`,
-              account_from: cashAccountId,
+              description: `Purchase order ${purchaseData.orderNumber} - ${purchaseData.vendorName || "vendor"}`,
+              account_from: cashAccountId, // Cash account (source - money going out)
+              account_to: expenseAccountId, // Expense account (destination - expense recorded)
               amount: purchaseData.total,
-              status: "completed",
+              status: "posted", // Use "posted" for completed purchases
               reference: purchaseData.orderNumber,
               notes: `Purchase from ${purchaseData.vendorName || "vendor"}`,
               created_by: user.id,
@@ -214,19 +255,38 @@ export function usePurchases() {
             console.error("Error creating transaction:", transactionError);
           } else {
             // Update cash account balance (decrease)
-            const { data: account } = await supabase
+            const { data: cashAccount } = await supabase
               .from("accounts")
               .select("balance")
               .eq("id", cashAccountId)
               .single();
 
-            if (account) {
+            if (cashAccount) {
               await supabase
                 .from("accounts")
-                .update({ balance: Math.max(0, (account.balance || 0) - purchaseData.total) })
+                .update({ balance: Math.max(0, (cashAccount.balance || 0) - purchaseData.total) })
                 .eq("id", cashAccountId);
             }
+
+            // Update expense account balance (increase for expense)
+            const { data: expenseAccount } = await supabase
+              .from("accounts")
+              .select("balance")
+              .eq("id", expenseAccountId)
+              .single();
+
+            if (expenseAccount) {
+              await supabase
+                .from("accounts")
+                .update({ balance: (expenseAccount.balance || 0) + purchaseData.total })
+                .eq("id", expenseAccountId);
+            }
           }
+        } else {
+          console.warn("Could not find required accounts for transaction:", {
+            cashAccountId,
+            expenseAccountId,
+          });
         }
       }
 
