@@ -9,35 +9,47 @@ export function useUsers() {
   const usersQuery = useQuery({
     queryKey: ["users"],
     queryFn: async () => {
-      // Fetch profiles with their roles
+      // Fetch profiles with their roles in a single query using join
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .select(`
+          *,
+          user_roles!left(role)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(500); // Limit to prevent slow queries
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error("Error fetching profiles:", profilesError);
+        throw profilesError;
+      }
 
-      // Fetch user roles
-      const { data: userRoles, error: rolesError } = await supabase
-        .from("user_roles")
-        .select("user_id, role");
+      if (!profiles) return [];
 
-      if (rolesError) throw rolesError;
+      return profiles.map((profile: any) => {
+        // Handle the joined user_roles (can be array or single object)
+        const roleData = profile.user_roles;
+        let role: AppRole = "viewer";
+        
+        if (Array.isArray(roleData) && roleData.length > 0) {
+          role = roleData[0].role as AppRole;
+        } else if (roleData && roleData.role) {
+          role = roleData.role as AppRole;
+        }
 
-      // Create a map of user_id to role
-      const roleMap = new Map(userRoles?.map(ur => [ur.user_id, ur.role]) || []);
-
-      return profiles.map((profile: any) => ({
-        id: profile.id,
-        name: profile.name || "",
-        email: profile.email,
-        role: (roleMap.get(profile.id) || "viewer") as AppRole,
-        status: profile.status || "active",
-        avatar: profile.avatar_url,
-        createdAt: profile.created_at,
-        lastLogin: profile.last_login,
-      })) as User[];
+        return {
+          id: profile.id,
+          name: profile.name || "",
+          email: profile.email,
+          role,
+          status: profile.status || "active",
+          avatar: profile.avatar_url,
+          createdAt: profile.created_at,
+          lastLogin: profile.last_login,
+        } as User;
+      });
     },
+    staleTime: 30000, // Cache for 30 seconds
   });
 
   const updateUserRole = useMutation({

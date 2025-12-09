@@ -681,10 +681,17 @@ BEGIN
 END $$;
 
 -- PROFILES TABLE POLICIES
+-- Users can read their own profile
 CREATE POLICY "Users can read own profile"
 ON profiles FOR SELECT
 TO authenticated
 USING (auth.uid() = id);
+
+-- All authenticated users can view all profiles (for user management)
+CREATE POLICY "Authenticated users can view all profiles"
+ON profiles FOR SELECT
+TO authenticated
+USING (true);
 
 CREATE POLICY "Users can update own profile"
 ON profiles FOR UPDATE
@@ -697,6 +704,7 @@ ON profiles FOR INSERT
 TO authenticated
 WITH CHECK (auth.uid() = id);
 
+-- Admins can view all profiles (redundant but kept for clarity)
 CREATE POLICY "Admins can view all profiles"
 ON profiles FOR SELECT
 TO authenticated
@@ -720,10 +728,17 @@ USING (
 );
 
 -- USER_ROLES TABLE POLICIES
+-- Users can read their own roles
 CREATE POLICY "Users can read own roles"
 ON user_roles FOR SELECT
 TO authenticated
 USING (user_id = auth.uid());
+
+-- All authenticated users can view all user roles (for user management)
+CREATE POLICY "Authenticated users can view all user roles"
+ON user_roles FOR SELECT
+TO authenticated
+USING (true);
 
 CREATE POLICY "Users can insert own roles"
 ON user_roles FOR INSERT

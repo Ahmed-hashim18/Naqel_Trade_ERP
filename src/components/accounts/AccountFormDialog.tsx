@@ -69,6 +69,7 @@ export function AccountFormDialog({
     onOpenChange(false);
   };
 
+  // Get all accounts that can be parents (same type, not the current account being edited, and top-level or already have children)
   const parentAccounts = accounts.filter(
     acc => acc.type === formData.type && acc.id !== account?.id
   );
