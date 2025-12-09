@@ -439,7 +439,7 @@ TO authenticated
 USING (
     EXISTS (
         SELECT 1 FROM purchase_orders
-        WHERE id = purchase_line_items.purchase_id
+        WHERE id = purchase_line_items.purchase_order_id
         AND public.has_any_role(auth.uid(), ARRAY['admin', 'manager', 'accountant', 'inventory']::app_role[])
     )
 );
