@@ -27,7 +27,6 @@ export function useVendors() {
           name: vendorData.name,
           email: vendorData.email || null,
           phone: vendorData.phone || null,
-          contact_person: vendorData.contactPerson || null,
           address: vendorData.address || null,
           city: vendorData.city || null,
           country: vendorData.country || null,
