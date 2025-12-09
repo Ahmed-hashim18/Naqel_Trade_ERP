@@ -7,6 +7,7 @@ import { Role } from '@/types/role';
 interface AuthContextType {
   user: User | null;
   role: Role | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<{ error?: string }>;
   signup: (email: string, password: string, name: string) => Promise<{ error?: string }>;
   logout: () => void;
@@ -16,66 +17,79 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Helper function with timeout
+const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout')), ms)
+  );
+  return Promise.race([promise, timeout]);
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchUserProfile = async (userId: string, userEmail?: string) => {
-    try {
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+  // Create basic user from session data
+  const createBasicUser = (authUser: { id: string; email?: string }): User => ({
+    id: authUser.id,
+    name: authUser.email?.split('@')[0] || 'User',
+    email: authUser.email || '',
+    role: 'viewer',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  });
 
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-        // Create a basic user from auth data if profile fetch fails
-        setUser({
-          id: userId,
-          name: userEmail?.split('@')[0] || 'User',
-          email: userEmail || '',
-          role: 'viewer',
-          status: 'active',
-          createdAt: new Date().toISOString(),
-        });
+  const fetchUserProfile = async (userId: string, userEmail?: string): Promise<void> => {
+    try {
+      // Try to fetch profile with timeout
+      const { data: profile, error: profileError } = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        5000 // 5 second timeout
+      );
+
+      if (profileError || !profile) {
+        console.warn('Could not fetch profile, using basic user data:', profileError?.message);
+        setUser(createBasicUser({ id: userId, email: userEmail }));
         return;
       }
 
-      const { data: userRole, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
-
-      if (roleError) {
-        console.error('Error fetching user role:', roleError);
-      }
+      // Try to fetch user role
+      const { data: userRole } = await withTimeout(
+        supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .single(),
+        3000
+      ).catch(() => ({ data: null }));
 
       const userData: User = {
         id: profile.id,
-        name: profile.name || '',
-        email: profile.email,
+        name: profile.name || userEmail?.split('@')[0] || 'User',
+        email: profile.email || userEmail || '',
         role: userRole?.role || 'viewer',
-        status: profile.status,
+        status: profile.status || 'active',
         avatar: profile.avatar_url || undefined,
         createdAt: profile.created_at,
       };
       setUser(userData);
 
-      if (userRole) {
-        // Fetch the role details from roles table
-        const { data: roleData, error: roleDataError } = await supabase
-          .from('roles')
-          .select('*')
-          .eq('role_type', userRole.role)
-          .single();
-
-        if (roleDataError) {
-          console.error('Error fetching role data:', roleDataError);
-        }
+      // Try to fetch role details (non-blocking)
+      if (userRole?.role) {
+        const { data: roleData } = await withTimeout(
+          supabase
+            .from('roles')
+            .select('*')
+            .eq('role_type', userRole.role)
+            .single(),
+          3000
+        ).catch(() => ({ data: null }));
 
         if (roleData) {
           setRole({
@@ -92,65 +106,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
-      // Set minimal user data so app doesn't hang
-      setUser({
-        id: userId,
-        name: userEmail?.split('@')[0] || 'User',
-        email: userEmail || '',
-        role: 'viewer',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      });
+      setUser(createBasicUser({ id: userId, email: userEmail }));
     }
   };
 
   useEffect(() => {
     let mounted = true;
+    let initTimeout: ReturnType<typeof setTimeout>;
 
-    // Initialize auth state
     const initializeAuth = async () => {
       try {
-        // Check for existing session first
-        const { data: { session } } = await supabase.auth.getSession();
+        // Set a maximum timeout for the entire init process
+        initTimeout = setTimeout(() => {
+          if (mounted && isLoading) {
+            console.warn('Auth initialization timeout, proceeding without user data');
+            setIsLoading(false);
+          }
+        }, 10000); // 10 second max timeout
+
+        // Get current session
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
         
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) setIsLoading(false);
+          return;
+        }
+
         if (!mounted) return;
-        
-        setSession(session);
-        
-        if (session?.user) {
-          await fetchUserProfile(session.user.id, session.user.email);
+
+        setSession(currentSession);
+
+        if (currentSession?.user) {
+          await fetchUserProfile(currentSession.user.id, currentSession.user.email);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
       } finally {
+        clearTimeout(initTimeout);
         if (mounted) {
           setIsLoading(false);
         }
       }
     };
 
+    // Start initialization
     initializeAuth();
 
-    // Set up auth state listener for subsequent changes
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event, newSession) => {
         if (!mounted) return;
-        
+
         console.log('Auth state changed:', event);
-        setSession(session);
-        
-        if (session?.user) {
-          // Don't set loading here as it would cause flash
-          await fetchUserProfile(session.user.id, session.user.email);
-        } else {
+        setSession(newSession);
+
+        if (event === 'SIGNED_OUT') {
           setUser(null);
           setRole(null);
+        } else if (newSession?.user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          await fetchUserProfile(newSession.user.id, newSession.user.email);
         }
       }
     );
 
     return () => {
       mounted = false;
+      clearTimeout(initTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -167,11 +189,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
+        setSession(data.session);
         await fetchUserProfile(data.user.id, data.user.email);
       }
 
       return {};
     } catch (error) {
+      console.error('Login error:', error);
       return { error: 'An unexpected error occurred' };
     }
   };
@@ -197,26 +221,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        // Assign default 'viewer' role to new users
-        await supabase.from('user_roles').insert({
-          user_id: data.user.id,
-          role: 'viewer',
-        });
+        // Try to assign default role
+        try {
+          await supabase.from('user_roles').insert({
+            user_id: data.user.id,
+            role: 'viewer',
+          });
+        } catch (roleError) {
+          console.warn('Could not assign default role:', roleError);
+        }
 
-        await fetchUserProfile(data.user.id, data.user.email);
+        if (data.session) {
+          setSession(data.session);
+          await fetchUserProfile(data.user.id, data.user.email);
+        }
       }
 
       return {};
     } catch (error) {
+      console.error('Signup error:', error);
       return { error: 'An unexpected error occurred' };
     }
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setRole(null);
-    setSession(null);
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      setRole(null);
+      setSession(null);
+    }
   };
 
   const resetPassword = async (email: string) => {
@@ -231,12 +268,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return {};
     } catch (error) {
+      console.error('Reset password error:', error);
       return { error: 'An unexpected error occurred' };
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, login, signup, logout, resetPassword, isLoading }}>
+    <AuthContext.Provider value={{ user, role, session, login, signup, logout, resetPassword, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

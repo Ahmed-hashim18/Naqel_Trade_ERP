@@ -7,7 +7,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, session, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -17,7 +17,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  if (!user) {
+  // Check both user and session - session is the source of truth from Supabase
+  if (!user && !session) {
     return <Navigate to="/login" replace />;
   }
 
