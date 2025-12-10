@@ -87,11 +87,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Build user from available data
+      // SECURITY: Default to 'viewer' (least privilege) if role fetch fails
       const userData: User = {
         id: userId,
         name: profile?.name || userEmail?.split('@')[0] || 'User',
         email: profile?.email || userEmail || '',
-        role: userRole?.role || 'admin', // Default to admin for the admin account
+        role: userRole?.role || 'viewer',
         status: profile?.status || 'active',
         avatar: profile?.avatar_url || undefined,
         createdAt: profile?.created_at || new Date().toISOString(),
@@ -132,38 +133,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    let initTimeout: ReturnType<typeof setTimeout>;
+    let initTimeout: ReturnType<typeof setTimeout> | null = null;
+    let initComplete = false; // Track if initialization completed successfully
+    let sessionChecked = false; // Track if session check completed
 
     const initializeAuth = async () => {
       try {
-        // Set a maximum timeout for the entire init process (reduced for faster UX)
-        initTimeout = setTimeout(() => {
-          if (mounted && isLoading) {
-            console.warn('Auth initialization timeout, proceeding without user data');
-            setIsLoading(false);
+        // Get current session - this is critical and must complete FIRST
+        // Use a separate timeout for just the session check
+        let currentSession = null;
+        try {
+          const { data, error } = await withTimeout(
+            supabase.auth.getSession(),
+            FAST_TIMEOUT
+          );
+          
+          if (!error) {
+            currentSession = data.session;
+          } else {
+            console.error('Error getting session:', error);
           }
-        }, INIT_TIMEOUT);
-
-        // Get current session
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        } catch (sessionError) {
+          console.error('Session check timed out or failed:', sessionError);
+        }
         
-        if (error) {
-          console.error('Error getting session:', error);
-          if (mounted) setIsLoading(false);
+        // Mark that we've completed the session check (update closure variable)
+        // This must be set BEFORE setting the timeout to prevent race conditions
+        sessionChecked = true;
+        
+        if (!mounted) {
           return;
         }
 
-        if (!mounted) return;
+        // Set a maximum timeout for the profile fetching process
+        // This timeout only applies AFTER session check completes
+        // Note: We use initComplete flag instead of isLoading state to avoid stale closure issues
+        initTimeout = setTimeout(() => {
+          // Double-check mounted and initComplete right before state update to prevent race conditions
+          if (mounted && !initComplete && sessionChecked) {
+            // Only proceed if we've at least checked the session but init hasn't completed
+            console.warn('Auth initialization timeout, proceeding without full user profile');
+            // Final check before state update to prevent updates after unmount
+            if (mounted) {
+              setIsLoading(false);
+            }
+          }
+        }, INIT_TIMEOUT);
 
+        // Always set session state (even if null) - this is the source of truth
         setSession(currentSession);
 
         if (currentSession?.user) {
+          // Profile fetching can timeout, but we already have a valid session
           await fetchUserProfile(currentSession.user.id, currentSession.user.email);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
       } finally {
-        clearTimeout(initTimeout);
+        initComplete = true; // Mark init as complete to prevent timeout from firing
+        if (initTimeout) {
+          clearTimeout(initTimeout);
+          initTimeout = null;
+        }
         if (mounted) {
           setIsLoading(false);
         }
@@ -200,7 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
-      clearTimeout(initTimeout);
+      if (initTimeout) {
+        clearTimeout(initTimeout);
+        initTimeout = null;
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -224,16 +258,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.user) {
         setSession(data.session);
         
-        // Update last login timestamp (non-blocking)
-        supabase
-          .from('profiles')
-          .update({ last_login: new Date().toISOString() })
-          .eq('id', data.user.id)
-          .then(() => console.log('Last login updated'))
-          .catch((e) => console.warn('Could not update last login:', e));
-        
-        // Fetch profile (with error handling built in)
-        await fetchUserProfile(data.user.id, data.user.email);
+        // Fetch user profile immediately and wait for it to complete
+        // This ensures admin permissions are available right away
+        try {
+          await fetchUserProfile(data.user.id, data.user.email);
+        } catch (error) {
+          console.warn('Failed to fetch user profile during login, using basic user:', error);
+          // Fallback to basic user if profile fetch fails
+          const basicUser: User = {
+            id: data.user.id,
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
+            email: data.user.email || '',
+            role: 'viewer', // Default to least privilege if fetch fails
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          };
+          setUser(basicUser);
+        }
       }
 
       return {};
@@ -264,16 +305,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data.user) {
-        // Try to assign default role
-        try {
-          await supabase.from('user_roles').insert({
-            user_id: data.user.id,
-            role: 'viewer',
-          });
-        } catch (roleError) {
-          console.warn('Could not assign default role:', roleError);
-        }
-
+        // Note: Role assignment is handled by the database trigger (handle_new_user)
+        // First user gets 'admin', subsequent users get 'viewer'
+        
         if (data.session) {
           setSession(data.session);
           await fetchUserProfile(data.user.id, data.user.email);
@@ -330,3 +364,4 @@ export function useAuth() {
   }
   return context;
 }
+
