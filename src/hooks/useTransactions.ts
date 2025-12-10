@@ -3,9 +3,11 @@ import { useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Transaction, TransactionType } from "@/types/transaction";
 import { toast } from "@/lib/toast";
+import { useActivityLogs } from "@/hooks/useActivityLog";
 
 export function useTransactions() {
   const queryClient = useQueryClient();
+  const { createActivityLog } = useActivityLogs();
 
   // Initial data fetch on mount
   useEffect(() => {
@@ -239,11 +241,27 @@ export function useTransactions() {
       if (error) throw error;
       return data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      // Create activity log entry
+      await createActivityLog({
+        module: "transactions",
+        actionType: "create",
+        description: `Transaction created: ${data.description || data.type} - ${data.amount} MRU`,
+        entityType: "transaction",
+        entityId: data.id,
+        metadata: {
+          type: data.type,
+          amount: data.amount,
+          reference: data.reference,
+          status: data.status,
+        },
+      });
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["activityLogs"] }),
       ]);
       await queryClient.refetchQueries({ queryKey: ["transactions"] });
       await queryClient.refetchQueries({ queryKey: ["accounts"] });
@@ -271,11 +289,26 @@ export function useTransactions() {
 
       if (error) throw error;
     },
-    onSuccess: async () => {
+    onSuccess: async (_, variables) => {
+      // Create activity log entry
+      await createActivityLog({
+        module: "transactions",
+        actionType: "update",
+        description: `Transaction updated: ${variables.data.description || variables.data.type || "Transaction"}`,
+        entityType: "transaction",
+        entityId: variables.id,
+        metadata: {
+          type: variables.data.type,
+          amount: variables.data.amount,
+          status: variables.data.status,
+        },
+      });
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["activityLogs"] }),
       ]);
       await queryClient.refetchQueries({ queryKey: ["transactions"] });
       await queryClient.refetchQueries({ queryKey: ["accounts"] });
@@ -292,9 +325,21 @@ export function useTransactions() {
       if (error) throw error;
     },
     onSuccess: async (_, ids) => {
+      // Create activity log entry for each deleted transaction
+      for (const id of ids) {
+        await createActivityLog({
+          module: "transactions",
+          actionType: "delete",
+          description: `Transaction deleted`,
+          entityType: "transaction",
+          entityId: id,
+        });
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["activityLogs"] }),
       ]);
       await queryClient.refetchQueries({ queryKey: ["transactions"] });
       await queryClient.refetchQueries({ queryKey: ["accounts"] });
@@ -314,10 +359,24 @@ export function useTransactions() {
 
       if (error) throw error;
     },
-    onSuccess: async (_, { ids }) => {
+    onSuccess: async (_, { ids, status }) => {
+      // Create activity log entry for bulk status update
+      await createActivityLog({
+        module: "transactions",
+        actionType: "update",
+        description: `Bulk status update: ${ids.length} transaction(s) set to ${status}`,
+        entityType: "transaction",
+        metadata: {
+          count: ids.length,
+          status,
+          transactionIds: ids,
+        },
+      });
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["transactions"] }),
         queryClient.invalidateQueries({ queryKey: ["accounts"] }),
+        queryClient.invalidateQueries({ queryKey: ["activityLogs"] }),
       ]);
       await queryClient.refetchQueries({ queryKey: ["transactions"] });
       await queryClient.refetchQueries({ queryKey: ["accounts"] });
